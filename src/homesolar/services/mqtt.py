@@ -29,8 +29,14 @@ def mqtt_task_loop(run, queue, client: paho_mqtt.Client):
                 break
 
             try:
+                qos = 1
+                try:
+                    qos = task["qos"]
+                except:
+                    pass
+
                 if task["name"] == "publish":
-                    client.publish(task["topic"], task["payload"])
+                    client.publish(task["topic"], task["payload"], qos)
                 else:
                     logger.warning(f"Unknown task is issued, discarding... [{task}]")
             except Exception as e:
@@ -149,9 +155,9 @@ def decorated_on_message(mqtt_queue, main_queue):
 
 def on_connect(client: paho_mqtt.Client, userdata, flags, reconnect):
     try:
-        client.subscribe(MqttTopic.SENSORS)
-        client.subscribe(MqttTopic.REQUEST)
-        client.subscribe(MqttTopic.CLIENT)
+        client.subscribe(MqttTopic.SENSORS,2)
+        client.subscribe(MqttTopic.REQUEST,2)
+        client.subscribe(MqttTopic.CLIENT,2)
         message = "Client reconnected successfully" if reconnect else "Client connected successfully"
         logger.info(message)
     except Exception as e:

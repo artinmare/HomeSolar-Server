@@ -1,19 +1,19 @@
 import asyncio
-import datetime
 import json
 import multiprocessing as mp
 import sys
 import threading
-from time import sleep, perf_counter
+from time import perf_counter
 
 from loguru import logger
 
+from homesolar.services.control import control_loop
 from homesolar.utils import config
 from homesolar.utils.datetime import DateTimeEncoder
 
 config_string = {
     "LOGGER": {
-        "log_location": "logs/"
+        "log_location": "./var/logs/homesolar/"
     },
     "CLIENT": {
         "response_time": 5,
@@ -30,8 +30,8 @@ config_string = {
     "INFLUXDB": {
         "host": "http://localhost",
         "port": 8086,
-        "token": "g0f6rFPPiAPqxPyuCmbR57WFCoeIV0-RlexjybpipavSP-vWGS7ZeSsXm_jXx8ppX-34xyyJa2sh-6MQoko_hg==",
-        "org": "wilamare",
+        "token": "o1hpLsNiCZ3tn39q0uXmGTGPMpT_UrZNpzLnxbXu_ZW9w6pTxMSzEp_B-cauXn_Q0nC4U24u9J9lHDC758hDZA==",
+        "org": "homesolar",
         "default_bucket": "homesolar",
         "read_timeout": 30_000,
         "timezone": "Asia/Makassar"
@@ -70,41 +70,9 @@ config_string = {
 config.load_config(config_string)
 logger.info("Configuration loaded")
 
-from homesolar.services import mqtt, bluetooth, relayer
-from homesolar.services.sqlite import reinitialize_tables
+from homesolar.services import mqtt, bluetooth, sqlite
 from homesolar.interfaces import database
 from homesolar.interfaces import mqtt as mqtt_interface
-
-
-def dummy_bluetooth(main_task_queue):
-    payload = {'Voltage': 48.6, 'Current': 5.9, 'Power': 286.0, 'Capacity': 200.0, 'ChargeStatus': 1.0,
-               'DischargeStatus': 1.0, 'BalanceStatus': 0.0, 'BalanceCells': 0.0, 'Bal0': 0, 'Bal1': 0,
-               'Bal2': 0, 'Bal3': 0, 'Bal4': 0, 'Bal5': 0, 'Bal6': 0, 'Bal7': 0, 'Bal8': 0, 'Bal9': 0,
-               'Bal10': 0, 'Bal11': 0, 'Bal12': 0, 'Bal13': 0, 'Bal14': 0, 'Bal15': 0, 'Bal16': 0, 'Bal17': 0,
-               'Bal18': 0, 'Bal19': 0, 'Bal20': 0, 'Bal21': 0, 'Bal22': 0, 'Bal23': 0, 'Temp1': 35.0,
-               'Temp2': 34.0, 'Temp3': 34.0, 'Temp4': 33.0, 'Temp5': 38.0, 'Temp6': 32.0, 'MinCell': 8.0,
-               'MaxCell': 4.0, 'MinVolt': 3.694, 'MaxVolt': 3.786, 'AvgVolt': 3.733, 'SoC': 34.58870168483647,
-               'Cell1': 3.718, 'Cell2': 3.735, 'Cell3': 3.709, 'Cell4': 3.786, 'Cell5': 3.733, 'Cell6': 3.696,
-               'Cell7': 3.738, 'Cell8': 3.694, 'Cell9': 3.71, 'Cell10': 3.734, 'Cell11': 3.758, 'Cell12': 3.75,
-               'Cell13': 3.772, 'Cell14': 0.0, 'Cell15': 0.0, 'Cell16': 0.0, 'Cell17': 0.0, 'Cell18': 0.0,
-               'Cell19': 0.0, 'Cell20': 0.0, 'Cell21': 0.0, 'Cell22': 0.0, 'Cell23': 0.0, 'Cell24': 0.0}
-    data = {'name': 'Antw33-BMS',
-            'payload': json.dumps(payload),
-            'time': datetime.datetime.now().timestamp()
-            }
-    while True:
-        try:
-            sleep(5)
-            logger.debug(f"Incoming Sensor Data [{data['name']}]")
-            task = {
-                "name": "write_sensor_data",
-                "data": data
-            }
-            main_task_queue.put(task)
-        except:
-            break
-
-    return
 
 
 def main():
@@ -130,36 +98,26 @@ def main():
             }
             mqtt_service_queue.put(mqtt_task)
 
-            # if debug:
-            #     # Relayer is a dummy services that relays sensor data from actual broker to development branch
-            #     # useful for developing using real-life sensor data without altering the live version
-            #     relayer_thread = mp.Process(target=relayer.initialize,
-            #                                 args=(mqtt_service_queue, "192.168.1.22", 1883, "relayer", "relayer"),
-            #                                 daemon=True)
-            #     relayer_thread.start()
-            #     logger.info("Relayer started")
-            #
-            #     # Reset Sqlite Database
-            #     reinitialize_tables()
-            #
-            #     # Testing Bluetooth but with static data
-            #     bluetooth_thread = mp.Process(target=dummy_bluetooth, args=(main_task_queue,), daemon=True)
-            #     bluetooth_thread.start()
-            #     logger.info("Bluetooth service started")
-            # else:
-            #     # Real Bluetooth services
-            #     bluetooth_thread = mp.Process(target=bluetooth.initialize, args=(main_task_queue,), daemon=True)
-            #     bluetooth_thread.start()
-            #     logger.info("Bluetooth service started")
-            #
-            # # Start the main process loop
-            # main_periodical_thread = threading.Thread(target=main_periodical_loop, args=[mqtt_service_queue],
-            #                                           daemon=True)
-            # main_periodical_thread.start()
-            # logger.info("Main loop started")
-            #
-            # asyncio.run(send_configurations(mqtt_service_queue))
-            # asyncio.run(main_task_loop(main_task_queue, mqtt_service_queue))
+            # Bluetooth services
+            # bluetooth_thread = mp.Process(target=bluetooth.initialize, args=(main_task_queue,), daemon=True)
+            # bluetooth_thread.start()
+            # logger.info("Bluetooth service started")
+
+            # Start the main process loop
+            main_periodical_thread = threading.Thread(target=main_periodical_loop, args=[mqtt_service_queue],
+                                                      daemon=True)
+            main_periodical_thread.start()
+            logger.info("Main loop started")
+
+            # Start the control loop
+            control_thread = threading.Thread(target=control_loop, args=[1],
+                                              daemon=True)
+            control_thread.start()
+            logger.info("Control loop started")
+
+            sqlite.reinitialize_tables()
+            asyncio.run(send_configurations(mqtt_service_queue))
+            asyncio.run(main_task_loop(main_task_queue, mqtt_service_queue))
 
         except KeyboardInterrupt:
             logger.error \
@@ -185,21 +143,22 @@ def main():
             global retry_count
             logger.exception(f"Something went wrong when starting the app: {e}")
 
-            if retry_count >= 5:
-                logger.error("App still failed after 5 times, exiting...")
-                logger.warning("Please check if the server is configured correctly then restart the server")
-                logger.warning("You can visit github.com/artinmare/homesolar for examples on how to setup the server")
-                exit()
+            # if retry_count >= 5:
+            #     logger.error("App still failed after 5 times, exiting...")
+            #     logger.warning("Please check if the server is configured correctly then restart the server")
+            #     logger.warning("You can visit github.com/artinmare/homesolar for examples on how to setup the server")
+            #     exit()
 
-            try:
-                logger.warning("Restarting the app, please CTRL+C to stopped the process!")
-                sleep(5)
-            except Exception as e:
-                logger.info(f"App is closing... [{e}]")
-                exit()
+            # try:
+            #     logger.warning("Restarting the app, please CTRL+C to stopped the process!")
+            #     sleep(5)
+            # except Exception as e:
+            #     logger.info(f"App is closing... [{e}]")
+            #     exit()
 
-            retry_count += 1
-            main()
+            # retry_count += 1
+            # main()
+            exit()
         finally:
             for process in processes:
                 process.join()
@@ -299,13 +258,6 @@ def main_periodical_loop(mqtt_task_queue, request_queue=None):
 
         except:
             break
-
-
-def running_random_test():
-    for i in range(100):
-        start_time = perf_counter()
-        print(datetime.datetime.now().timestamp())
-        print(f"{perf_counter() - start_time} sec(s)")
 
 
 if __name__ == '__main__':

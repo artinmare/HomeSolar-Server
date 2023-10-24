@@ -1,7 +1,7 @@
 from loguru import logger
-from sqlalchemy import Column, Integer, String, select
+from sqlalchemy import Column, Integer, String, select, ForeignKey
 from sqlalchemy.dialects.sqlite import insert
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, relationship
 
 # Models for each tables
 Base = declarative_base()
@@ -13,6 +13,36 @@ class SensorData(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(200), unique=True)
     value = Column(String)
+
+
+class Condition(Base):
+    __tablename__ = "condition"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(200))
+    description = Column(String)
+    parameters = relationship("Parameter", cascade="all, delete")
+    actions = relationship("Action", cascade="all, delete")
+
+
+class Parameter(Base):
+    __tablename__ = "parameter"
+
+    id = Column(Integer, primary_key=True)
+    order = Column(Integer)
+    name = Column(String(200))
+    value = Column(String)
+    operator = Column(Integer)
+    logic = Column(Integer)
+    condition_id = Column(Integer, ForeignKey("condition.id"))
+
+
+class Action(Base):
+    __tablename__ = "action"
+
+    id = Column(Integer, primary_key=True)
+    value = Column(String)
+    condition_id = Column(Integer, ForeignKey("condition.id"))
 
 
 def mapped_for_upsert(data):
@@ -27,6 +57,7 @@ def mapped_for_upsert(data):
         sensor_datas[f"{measurement}#{field}"] = sensor_data
 
     return sensor_datas
+
 
 def generate_add_sensor_data_sql(data):
     sensor_datas = []

@@ -1,4 +1,3 @@
-import asyncio
 import json
 from time import perf_counter
 
@@ -157,17 +156,18 @@ async def get_fields(measurement, bucket=None):
     logger.debug(f"Fields: {fields}")
     return fields
 
+
 async def get_configurations():
     configurations = []
     measurements = await get_measurements()
     logger.debug(measurements)
     for measurement in measurements:
-
         fields = await get_fields(measurement)
         configuration = {"measurement": measurement, "fields": fields}
         configurations.append(configuration)
 
     return configurations
+
 
 # Used only on Sqlite
 async def get_sensor_data(measurement, field):
